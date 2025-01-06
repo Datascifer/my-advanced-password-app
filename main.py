@@ -2,8 +2,7 @@ import os
 import string
 import random
 from datetime import datetime
-
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from sqlalchemy import create_engine, Column, Integer, String, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -84,64 +83,52 @@ def generate_advanced_password(
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Welcome to the Advanced Password Maker!"
+    """
+    Render the home page with a form to generate passwords.
+    """
+    return render_template("index.html")
+
 
 @app.route("/generate", methods=["POST"])
 def generate_password():
     """
     POST /generate
-    Body JSON (optional):
-    {
-      "length": 20,
-      "use_upper": true,
-      "use_lower": true,
-      "use_digits": true,
-      "use_punctuation": true
-    }
+    Generates a password based on form input and stores it in the database.
     """
-    data = request.get_json() if request.is_json else {}
-    length = data.get("length", 16)
-    use_upper = data.get("use_upper", True)
-    use_lower = data.get("use_lower", True)
-    use_digits = data.get("use_digits", True)
-    use_punctuation = data.get("use_punctuation", True)
-    
-    # Generate the password
+    length = int(request.form.get("length", 16))
+    use_upper = "use_upper" in request.form
+    use_lower = "use_lower" in request.form
+    use_digits = "use_digits" in request.form
+    use_punctuation = "use_punctuation" in request.form
+
+    # Generate password
     new_password = generate_advanced_password(length, use_upper, use_lower, use_digits, use_punctuation)
-    
-    # Save to Postgres
+
+    # Save to database
     session = SessionLocal()
     password_entry = Password(password_value=new_password)
     session.add(password_entry)
     session.commit()
     session.refresh(password_entry)
     session.close()
-    
-    return jsonify({
-        "message": "Password generated and stored successfully!",
-        "generated_password": new_password
-    }), 201
+
+    # Render the home page with the generated password
+    return render_template("index.html", generated_password=new_password)
+
 
 @app.route("/passwords", methods=["GET"])
 def get_all_passwords():
     """
     GET /passwords
-    Returns all passwords in the database (in real scenarios, you'd want authentication).
+    Fetch all saved passwords from the database and render them in a table.
     """
     session = SessionLocal()
     all_passwords = session.query(Password).all()
-    
-    response = [
-        {
-            "id": pwd.id,
-            "password_value": pwd.password_value,
-            "created_at": pwd.created_at.isoformat()
-        } for pwd in all_passwords
-    ]
     session.close()
-    
-    return jsonify(response), 200
+    return render_template("passwords.html", passwords=all_passwords)
+
 
 if __name__ == "__main__":
     # For local testing
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=True, host="0.0.0.0", port=port)
